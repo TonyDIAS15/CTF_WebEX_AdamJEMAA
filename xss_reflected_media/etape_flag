@@ -1,0 +1,91 @@
+Flag
+928d819fc19405ae09921a2b71227bd9aba106f9d2d37ac412e9e5a750f1506d
+
+Technique utilisée
+
+xss_reflected_media
+
+Vulnérabilité exploitée
+
+La page media reflète directement la valeur du paramètre src dans l’attribut data d’une balise <object>.
+Bien que les caractères HTML (<, >, ") soient encodés côté serveur, l’application n’effectue aucune validation du schéma d’URL fourni.
+
+Cela permet à un attaquant d’injecter une data URI encodée en base64, qui sera décodée et interprétée par le navigateur, conduisant à l’exécution de code JavaScript.
+Il s’agit d’une XSS réfléchie (Reflected XSS).
+
+Étapes de découverte et d’exploitation
+Identification du point d’entrée
+
+Depuis la page d’accueil, un lien mène vers :
+
+index.php?page=media&src=nsa
+
+
+Le paramètre src est entièrement contrôlé par l’utilisateur.
+
+Test de réflexion
+
+En modifiant la valeur du paramètre src, on observe qu’elle est réinjectée directement dans la page HTML :
+
+<object data="USER_INPUT"></object>
+
+
+Cela confirme la présence d’un point de réflexion.
+
+Tentatives d’injection classiques
+
+Des payloads XSS classiques (<script>, rupture d’attribut, balises SVG) sont testés, mais échouent car les caractères HTML sont encodés par l’application (htmlspecialchars).
+
+Injection du payload XSS via data URI
+
+Le filtrage étant appliqué avant le rendu navigateur, une data URI encodée en base64 est utilisée afin de contourner l’encodage HTML.
+
+Payload JavaScript utilisé :
+
+<script>alert(1)</script>
+
+
+Encodage base64 :
+
+PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==
+
+Exécution du script
+
+Le navigateur décode la data URI après réception de la réponse serveur et interprète le contenu HTML, ce qui entraîne l’exécution du code JavaScript injecté.
+
+L’application valide alors l’exploitation et affiche un message de succès contenant le flag.
+
+Commande utilisée (preuve technique)
+curl -sG "http://192.168.133.142/index.php" \
+  --data-urlencode "page=media" \
+  --data-urlencode "src=data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg=="
+
+Résultat obtenu
+
+L’application affiche le message suivant :
+
+The flag is : 928d819fc19405ae09921a2b71227bd9aba106f9d2d37ac412e9e5a750f1506d
+
+Impact
+
+Exécution de code JavaScript arbitraire côté client
+
+Vol potentiel de cookies ou de sessions
+
+Redirection vers des sites malveillants
+
+Altération de l’interface utilisateur
+
+Vulnérabilité exploitable sans authentification
+
+Correctifs recommandés
+
+Interdire explicitement les schémas dangereux (data:, javascript:)
+
+Valider strictement les paramètres utilisateurs à l’aide de listes blanches
+
+Éviter l’utilisation de la balise <object> pour afficher du contenu dynamique
+
+Mettre en place une Content Security Policy (CSP) restrictive (object-src 'none')
+
+Ne jamais refléter directement des entrées utilisateur dans des attributs HTML sensibles
