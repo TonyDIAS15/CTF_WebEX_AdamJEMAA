@@ -1,0 +1,77 @@
+Flag :
+0fbb54bbf7d099713ca4be297e1bc7da0173d8b3c21c1811b916a3a86652724e
+
+Technique utilisée
+
+xss_stored_feedback
+
+Vulnérabilité exploitée
+
+L’application stocke et réaffiche les entrées utilisateur du formulaire Feedback sans encodage HTML correct.
+Un filtrage naïf supprime certaines balises (<script>, <img>), mais ne neutralise pas le cassage de contexte HTML ni les attributs événementiels (onclick).
+Cela permet l’injection d’un XSS stocké déclenché par interaction utilisateur.
+
+Étapes de découverte et d’exploitation
+Observation du formulaire Feedback
+
+Envoi des données via POST sur la même page.
+
+Champs utilisés : txtName, mtxtMessage.
+
+Les messages sont stockés et réaffichés dans le HTML sans échappement.
+
+Tests de filtrage
+
+<script>alert(1)</script> : balise supprimée, pas d’exécution.
+
+<img src=x onerror=alert(1)> : balise supprimée.
+
+Conclusion : filtrage par blacklist partielle.
+
+Cassage de contexte HTML
+
+Injection permettant de fermer les balises ouvertes et d’introduire un élément interactif avec événement JavaScript autorisé.
+
+Payload utilisé (champ Message) :
+
+</td></tr></table><a href="#" onclick="alert(1)">CLICK</a>
+
+Déclenchement du XSS stocké
+
+Recharge de la page Feedback.
+
+Clic sur le lien CLICK.
+
+Le JavaScript s’exécute, validant le XSS stocké.
+
+Affichage du flag
+
+Une fois l’exécution JavaScript validée, l’application affiche automatiquement le message de succès contenant le flag en bas de page.
+
+Résultat obtenu
+
+Message affiché par l’application :
+
+THE FLAG IS : 0fbb54bbf7d099713ca4be297e1bc7da0173d8b3c21c1811b916a3a86652724e
+
+Impact
+
+Exécution de code JavaScript persistante (XSS stocké)
+
+Compromission potentielle des sessions utilisateur
+
+Vol de cookies / redirections malveillantes possibles
+
+Dégradation de l’intégrité et de la confidentialité de l’application
+
+Correctif recommandé
+
+Échapper systématiquement les entrées utilisateur à l’affichage (htmlspecialchars, encodage contextuel).
+
+Éviter tout filtrage par blacklist ; privilégier un encodage strict.
+
+Désactiver ou filtrer les attributs événementiels (on*).
+
+Mettre en place une Content Security Policy (CSP) restrictive.
+
+Séparer clairement données et présentation (templates sécurisés).
