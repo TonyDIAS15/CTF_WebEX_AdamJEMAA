@@ -1,0 +1,68 @@
+Flag : df2eb4ba34ed059a1e3e89ff4dfc13445f104a1a52295214def1c4fb1693a5c3
+Technique utilisée
+
+cookie_weak_encryption
+
+Vulnérabilité exploitée
+
+L’application utilise un cookie côté client (I_am_admin) pour gérer les privilèges administrateur.
+La valeur de ce cookie est comparée à un hash MD5 prévisible, ce qui permet à un attaquant de forger manuellement le cookie et d’obtenir des droits administrateur sans authentification.
+
+Étapes de découverte et d’exploitation
+
+Observation du cookie
+
+Lors de l’accès à certaines pages, l’application utilise le cookie :
+
+I_am_admin
+
+
+Ce cookie semble déterminer si l’utilisateur est administrateur.
+
+Analyse de la logique de vérification
+
+En testant différentes valeurs classiques, il apparaît que l’application vérifie si :
+
+I_am_admin == md5("true")
+
+
+Le hash correspondant est :
+
+b326b5062b2f0e69046810717534cb09
+
+
+Forge du cookie
+
+Le cookie I_am_admin est modifié manuellement avec la valeur MD5 attendue.
+
+Accès à la page protégée
+
+Une fois le cookie modifié, l’accès à la page d’authentification permet d’afficher un message de succès et le flag.
+
+Commande utilisée
+curl -H "Cookie: I_am_admin=b326b5062b2f0e69046810717534cb09" \
+"http://192.168.133.142/index.php?page=signin"
+
+Résultat obtenu
+
+L’application considère alors l’utilisateur comme administrateur et affiche le message :
+
+Good job! Flag : df2eb4ba34ed059a1e3e89ff4dfc13445f104a1a52295214def1c4fb1693a5c3
+
+Impact
+
+Élévation de privilèges
+
+Accès administrateur sans authentification
+
+Divulgation d’informations sensibles
+
+Correctif recommandé
+
+Ne jamais stocker des privilèges dans un cookie côté client
+
+Utiliser une gestion de session côté serveur
+
+Signer et vérifier l’intégrité des cookies
+
+Éviter les algorithmes de hachage faibles et prévisibles (MD5)
